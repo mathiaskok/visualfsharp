@@ -128,6 +128,8 @@ namespace Microsoft.FSharp.Collections
                 elif c = 0 then MapNode(k,v,l,r,h)
                 else rebalance l k2 v2 (add comparer k v r) 
 
+        
+
         let rec find (comparer: IComparer<'Value>) k m = 
             match m with 
             | MapEmpty -> raise (KeyNotFoundException())
@@ -207,6 +209,78 @@ namespace Microsoft.FSharp.Collections
                       let sk,sv,r' = spliceOutSuccessor r 
                       mk l sk sv r'
                 else rebalance l k2 v2 (remove comparer k r) 
+
+        let rec adjust (f: 'a -> 'a) (comparer: IComparer<'Value>) k m = 
+            match m with
+            | MapEmpty -> MapEmpty
+            | MapOne(k2,v) ->
+                let c = comparer.Compare(k,k2)
+                if c = 0 then MapOne(k,f v)
+                else m
+            | MapNode(k2,v,l,r,h) ->
+                let c = comparer.Compare(k,k2)
+                if c < 0 then rebalance (adjust f comparer k l) k2 v r
+                elif c = 0 then MapNode(k,f v,l,r,h)
+                else rebalance l k2 v (adjust f comparer k r)
+               
+
+        let rec update (f: 'a -> 'a Option) (comparer: IComparer<'Value>) k m = 
+            match m with
+            | MapEmpty -> MapEmpty
+            | MapOne(k2,v) ->
+                let c = comparer.Compare(k,k2)
+                if c = 0 then 
+                    match f v with
+                    | None -> MapEmpty
+                    | Some v2 -> MapOne(k,v2)
+                else m                   
+            | MapNode(k2,v,l,r,h) ->
+                let c = comparer.Compare(k,k2)
+                if c < 0 then rebalance (update f comparer k l) k2 v r
+                elif c = 0 then 
+                    match f v with
+                    | Some v2 -> MapNode(k2,v2,l,r,h)
+                    | None ->              
+                      match l,r with 
+                      | MapEmpty,_ -> r
+                      | _,MapEmpty -> l
+                      | _ -> 
+                          let sk,sv,r' = spliceOutSuccessor r 
+                          mk l sk sv r'
+                else rebalance l k2 v (update f comparer k r)
+
+        let rec alter (f: 'a Option -> 'a Option) (comparer: IComparer<'Value>) k m = 
+            match m with
+            | MapEmpty -> 
+                match f None with
+                | None -> MapEmpty
+                | Some v -> MapOne(k,v)
+            | MapOne(k2,v) ->
+                let c = comparer.Compare(k,k2)
+                if c = 0 then
+                    match f (Some v) with
+                    | None -> MapEmpty
+                    | Some v2 -> MapOne(k,v2)
+                else
+                    match f None with
+                    | None -> m
+                    | Some v2 ->
+                        if c < 0 then MapNode (k,v2,MapEmpty,m,2)
+                        else MapNode(k,v2,m,MapEmpty,2)
+            | MapNode(k2,v,l,r,h) -> //TODO: Consider the 'add' scenario
+                let c = comparer.Compare(k,k2)
+                if c = 0 then
+                    match f (Some v) with
+                    | Some v2 -> MapNode(k,v2,l,r,h)
+                    | None -> 
+                        match l,r with 
+                        | MapEmpty,_ -> r
+                        | _,MapEmpty -> l
+                        | _ ->
+                            let sk,sv,r' = spliceOutSuccessor r 
+                            mk l sk sv r'
+                elif c < 0 then rebalance (alter f comparer k l) k2 v r
+                else rebalance l k2 v (alter f comparer k r)
 
         let rec mem (comparer: IComparer<'Value>) k m = 
             match m with 
